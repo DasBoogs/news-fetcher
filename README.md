@@ -364,37 +364,86 @@ All crawlers follow this workflow:
 
 When implementing a new crawler, consider rate limiting by adding delays between requests if fetching from multiple endpoints (see `devto.ts` and `reddit.ts` for examples using `setTimeout`). Handle errors gracefully by wrapping API calls in try-catch blocks and returning an empty array on failure. Use unique IDs by prefixing article IDs with your source name (e.g., `yoursource-${id}`) to avoid collisions. Set appropriate User-Agent headers to identify your requests to the source API. Deduplicate results if your crawler fetches from multiple endpoints that might return the same articles (see `devto.ts` for an example using `Map`).
 
-## Adding New Subjects
+## Adding New Search Topics
 
-To add a new subject for filtering, create a new file in `backend/src/subjects/` following the pattern in `agenticAI.ts`:
+The news fetcher uses a subject registry system to manage search topics. Adding a new topic is straightforward and requires creating a subject definition file and registering it. Once registered, the subject automatically appears in the API and frontend dropdown without any additional configuration.
+
+### Step 1: Create a Subject Definition File
+
+Create a new TypeScript file in `backend/src/subjects/` for your subject. For example, to add a "Machine Learning" topic, create `backend/src/subjects/machineLearning.ts`:
 
 ```typescript
 import { Subject } from './types';
 
-export const yourSubject: Subject = {
-  id: 'your-subject-id',
-  name: 'Your Subject Name',
-  description: 'Description of what this subject covers',
+export const machineLearningSubject: Subject = {
+  id: 'machine-learning',
+  name: 'Machine Learning',
+  description: 'Articles about machine learning algorithms, frameworks, and applications',
   keywords: [
-    // Primary keywords (10 points each)
-    'primary keyword 1',
-    'primary keyword 2',
+    'machine learning',
+    'ml model',
+    'neural network',
+    'deep learning',
   ],
   relatedTerms: [
-    // Related terms (5 points each)
-    'related term 1',
-    'related term 2',
+    'tensorflow',
+    'pytorch',
+    'scikit-learn',
+    'training data',
+    'model inference',
   ],
 };
 ```
 
-Then register it in `backend/src/subjects/index.ts`:
+### Step 2: Understand the Subject Structure
+
+The `Subject` interface is defined in `backend/src/subjects/types.ts` and contains the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Unique identifier used in API routes (e.g., `/api/articles/machine-learning`) |
+| `name` | `string` | Display name shown in the frontend dropdown |
+| `description` | `string` | Brief description of what the topic covers |
+| `keywords` | `string[]` | Primary search terms for matching articles |
+| `relatedTerms` | `string[]` | Broader related terms for matching articles |
+
+### Step 3: Understand Keyword Matching and Relevance Scoring
+
+The system uses keyword matching to determine if an article is relevant to a subject. When an article's title and content are checked against a subject, the relevance score is calculated as follows:
+
+| Term Type | Points per Match | Use Case |
+|-----------|------------------|----------|
+| Primary keywords (`keywords` array) | 10 points | Core terms that directly identify the topic |
+| Related terms (`relatedTerms` array) | 5 points | Broader terms that indicate related content |
+
+An article must match at least one keyword or related term to be considered relevant (relevance score > 0). Articles with higher relevance scores are more closely aligned with the topic.
+
+For the existing "Agentic AI" subject in `backend/src/subjects/agenticAI.ts`, primary keywords include terms like "agentic ai", "ai agents", and "autonomous ai", while related terms include framework names like "langchain", "autogpt", and "crewai".
+
+### Step 4: Register the Subject
+
+Add your subject to the registry in `backend/src/subjects/index.ts`:
 
 ```typescript
-import { yourSubject } from './yourSubject';
+import { Subject, SubjectMatch } from './types';
+import { agenticAISubject } from './agenticAI';
+import { machineLearningSubject } from './machineLearning';  // Add import
 
-subjects.set(yourSubject.id, yourSubject);
+const subjects: Map<string, Subject> = new Map();
+
+subjects.set(agenticAISubject.id, agenticAISubject);
+subjects.set(machineLearningSubject.id, machineLearningSubject);  // Register subject
 ```
+
+### Automatic Integration
+
+Once registered, your subject is automatically available throughout the application:
+
+The `/api/subjects` endpoint will include your new subject in its response, allowing clients to discover available topics. The frontend dropdown in `frontend/src/App.tsx` fetches subjects on load and will display your new topic as a selectable option. All crawlers (Hacker News, Reddit, Dev.to) will filter articles using your subject's keywords when users request articles for your topic via `/api/articles/:subjectId`.
+
+### Best Practices for Defining Keywords
+
+When defining keywords and related terms, choose primary keywords that are specific and directly identify your topic, as these receive higher scoring weight. Use related terms for broader concepts, framework names, tool names, or alternative phrasings that indicate relevant content. Include both singular and plural forms if they differ significantly (e.g., "neural network" and "neural networks"). Consider common abbreviations and acronyms used in the field. Test your subject by running the application and verifying that relevant articles are being matched while irrelevant ones are filtered out.
 
 ## Tech Stack
 
